@@ -10,7 +10,7 @@ async function main() {
   const balance = await ethers.provider.getBalance(deployer.address);
   console.log("💰 Balance:", ethers.formatEther(balance), "ETH");
 
-  if (balance === 0n) {
+  if (balance === BigInt(0)) {
     throw new Error("❌ Wallet has no ETH. Fund it before deploying.");
   }
 
