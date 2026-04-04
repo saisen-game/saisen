@@ -1,5 +1,3 @@
-import type { FrameContext } from "@farcaster/frame-sdk";
-
 export interface FarcasterUser {
   fid:         number;
   username:    string;
@@ -27,13 +25,13 @@ export async function initFarcaster(): Promise<SaisenContext> {
 
   try {
     const { default: sdk } = await import("@farcaster/frame-sdk");
+
     const context = await Promise.race([
-      sdk.context as Promise<FrameContext | null>,
-      new Promise<null>((res) => setTimeout(() => res(null), 3000)), // 3s timeout
+      sdk.context as Promise<any>, // 🔥 FIX: no FrameContext
+      new Promise<null>((res) => setTimeout(() => res(null), 3000)),
     ]);
 
     if (context?.user?.fid) {
-      // Signal to the Farcaster client that the Mini App is ready
       await sdk.actions.ready({ disableNativeGestures: true });
 
       _ctx = {
