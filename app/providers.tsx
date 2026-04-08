@@ -10,7 +10,7 @@ import { base, baseSepolia } from "wagmi/chains";
 import "@rainbow-me/rainbowkit/styles.css";
 
 // 🔥 Tambahan Farcaster
-import * as miniapp from "@farcaster/miniapp-sdk";
+import { actions } from "@farcaster/miniapp-sdk";
 
 const CHAIN_ID = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID ?? "8453");
 
@@ -32,7 +32,7 @@ export default function Providers({ children }: { children: ReactNode }) {
   // 🔥 Farcaster Mini App ready signal
   useEffect(() => {
     try {
-      ready();
+      actions.ready();
     } catch (e) {
       // Not in Farcaster — ignore
       console.log("Not running inside Farcaster");
