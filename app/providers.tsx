@@ -10,7 +10,7 @@ import { base, baseSepolia } from "wagmi/chains";
 import "@rainbow-me/rainbowkit/styles.css";
 
 // 🔥 Tambahan Farcaster
-import { ready } from "@farcaster/miniapp-sdk";
+import * as miniapp from "@farcaster/miniapp-sdk";
 
 const CHAIN_ID = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID ?? "8453");
 
