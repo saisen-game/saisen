@@ -28,8 +28,16 @@ export async function initFarcaster(): Promise<SaisenContext> {
     let isMiniApp = false;
 
     try {
-      const { isInMiniApp } = await import("@farcaster/miniapp-sdk");
-      isMiniApp = isInMiniApp();
+      const { default: miniAppSdk } = await import("@farcaster/miniapp-sdk");
+
+      const context = await Promise.race([
+        miniAppSdk.context as Promise<any>,
+        new Promise<null>((res) => setTimeout(() => res(null), 2000)),
+      ]);
+
+      if (context) {
+        isMiniApp = true;
+      }
     } catch {
       isMiniApp = false;
     }
