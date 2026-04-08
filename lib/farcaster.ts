@@ -24,15 +24,28 @@ export async function initFarcaster(): Promise<SaisenContext> {
   }
 
   try {
+    // 🔥 1. Detect Mini App (NEW SYSTEM)
+    let isMiniApp = false;
+
+    try {
+      const { isInMiniApp } = await import("@farcaster/miniapp-sdk");
+      isMiniApp = isInMiniApp();
+    } catch {
+      isMiniApp = false;
+    }
+
+    // 🔥 2. Try Frame SDK (LEGACY SUPPORT)
     const { default: sdk } = await import("@farcaster/frame-sdk");
 
     const context = await Promise.race([
-      sdk.context as Promise<any>, // 🔥 FIX: no FrameContext
+      sdk.context as Promise<any>,
       new Promise<null>((res) => setTimeout(() => res(null), 3000)),
     ]);
 
     if (context?.user?.fid) {
-      await sdk.actions.ready({ disableNativeGestures: true });
+      try {
+        await sdk.actions.ready({ disableNativeGestures: true });
+      } catch {}
 
       _ctx = {
         sdk,
@@ -43,6 +56,13 @@ export async function initFarcaster(): Promise<SaisenContext> {
           displayName: context.user.displayName ?? context.user.username ?? "Player",
           pfpUrl:      context.user.pfpUrl      ?? "",
         },
+      };
+    } else if (isMiniApp) {
+      // 🔥 3. Mini App fallback (no context yet, but still Farcaster)
+      _ctx = {
+        sdk: null,
+        isInFarcaster: true,
+        user: null, // nanti bisa diisi via auth kalau mau
       };
     } else {
       _ctx = { sdk: null, isInFarcaster: false, user: null };

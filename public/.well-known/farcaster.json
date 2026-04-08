@@ -1,0 +1,12 @@
+{
+  "miniapp": {
+    "version": "1",
+    "name": "SAISEN",
+    "icon": "https://saisen.vercel.app/frame.png",
+    "homeUrl": "https://saisen.vercel.app",
+    "imageUrl": "https://saisen.vercel.app/frame.png",
+    "buttonTitle": "Play SAISEN",
+    "splashImageUrl": "https://saisen.vercel.app/frame.png",
+    "splashBackgroundColor": "#0a0a0f"
+  }
+}
