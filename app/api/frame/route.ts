@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const APP   = process.env.NEXT_PUBLIC_APP_URL ?? "https://saisen.vercel.app/";
+const APP   = process.env.NEXT_PUBLIC_APP_URL ?? "https://saisen.vercel.app";
 const FRAME = `${APP}/frame.png`;
 const PREV  = `${APP}/game-preview.png`;
 
