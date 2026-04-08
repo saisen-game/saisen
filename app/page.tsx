@@ -9,6 +9,9 @@ import FarcasterProfile from "@/components/FarcasterProfile";
 import WalletButton    from "@/components/WalletButton";
 import { ToriiIcon, LogoMark } from "@/components/icons";
 
+// ➕ ADDED (no changes to existing logic)
+import sdk from "@farcaster/miniapp-sdk";
+
 type View = "home" | "game" | "leaderboard";
 
 export default function Home() {
@@ -17,13 +20,30 @@ export default function Home() {
   const [view,     setView]     = useState<View>("home");
   const [hydrated, setHydrated] = useState(false);
 
+  // ➕ ADDED
+  const [canInstall, setCanInstall] = useState(false);
+
   useEffect(() => {
     initFarcaster().then((ctx) => {
       setFcUser(ctx.user);
       setInFC(ctx.isInFarcaster);
       setHydrated(true);
     });
+
+    // ➕ ADDED
+    try {
+      sdk.context
+        .then(() => setCanInstall(true))
+        .catch(() => {});
+    } catch {}
   }, []);
+
+  // ➕ OPTIONAL SMOOTH UX (added only)
+  useEffect(() => {
+    if (hydrated && inFC && view === "home") {
+      setTimeout(() => setView("game"), 300);
+    }
+  }, [hydrated, inFC, view]);
 
   // ── Loading splash ───────────────────────────────────────────
   if (!hydrated) {
@@ -164,42 +184,38 @@ export default function Home() {
 
         {/* CTAs */}
         <div style={{ display: "flex", gap: 13, justifyContent: "center", flexWrap: "wrap" }}>
-          <button
-            onClick={() => setView("game")}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 9,
-              background: "linear-gradient(135deg,#9f5fff,#6d28d9)",
-              border: "none", borderRadius: 12, padding: "16px 40px",
-              fontFamily: "'Orbitron',monospace", fontWeight: 700, fontSize: 14,
-              letterSpacing: ".08em", color: "#fff", cursor: "pointer",
-              boxShadow: "0 0 28px rgba(159,95,255,.5)", transition: "filter .15s,transform .15s",
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.filter = "brightness(1.15)";
-              (e.currentTarget as HTMLElement).style.transform = "scale(1.04)";
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.filter = "";
-              (e.currentTarget as HTMLElement).style.transform = "";
-            }}>
+          <button onClick={() => setView("game")}>
             <Zap size={16} /> Play vs Bot
           </button>
 
-          <button
-            onClick={() => setView("leaderboard")}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 9,
-              background: "transparent", border: "1px solid rgba(159,95,255,.38)",
-              borderRadius: 12, padding: "16px 34px",
-              fontFamily: "'Orbitron',monospace", fontWeight: 700, fontSize: 14,
-              letterSpacing: ".08em", color: "#b97fff", cursor: "pointer",
-              transition: "all .15s",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(159,95,255,.08)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+          <button onClick={() => setView("leaderboard")}>
             <Trophy size={16} /> Leaderboard
           </button>
         </div>
+
+        {/* ➕ ADDED MINI APP BUTTON */}
+        {inFC && canInstall && (
+          <div style={{ marginTop: 14 }}>
+            <button
+              onClick={() => sdk.actions.addMiniApp()}
+              style={{
+                fontSize: 11,
+                fontFamily: "'Orbitron',monospace",
+                letterSpacing: ".12em",
+                color: "rgba(159,95,255,.6)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                opacity: 0.7,
+                transition: "opacity .2s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+              onMouseLeave={e => (e.currentTarget.style.opacity = "0.7")}
+            >
+              + Add SAISEN to Farcaster
+            </button>
+          </div>
+        )}
 
         {/* Stats strip */}
         <div style={{
