@@ -3,11 +3,14 @@
 import { useState, useCallback } from "react";
 import { useWallet }             from "@solana/wallet-adapter-react";
 import type { WalletName }       from "@solana/wallet-adapter-base";
-import { Wallet, X }             from "lucide-react";
+import { Wallet, X, LogIn }      from "lucide-react";
+import { useWalletCtx }          from "@/context/WalletContext";
 
 export default function WalletButton() {
   const { publicKey, connected, connecting, select, connect, disconnect, wallets } = useWallet();
+  const { solBalance, saiBalance, isHolder, isAuthenticated, authenticate }        = useWalletCtx();
   const [showPicker, setShowPicker] = useState(false);
+  const [signing,    setSigning]    = useState(false);
 
   const handleSelect = useCallback(async (name: WalletName) => {
     setShowPicker(false);
@@ -15,29 +18,81 @@ export default function WalletButton() {
     try { await connect(); } catch {}
   }, [select, connect]);
 
+  const handleSignIn = useCallback(async () => {
+    setSigning(true);
+    await authenticate();
+    setSigning(false);
+  }, [authenticate]);
+
   if (connected && publicKey) {
     const addr = publicKey.toBase58();
     return (
-      <button
-        onClick={() => disconnect()}
-        title="Click to disconnect"
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 7,
-          background: "rgba(16,185,129,.08)",
-          border: "1px solid rgba(16,185,129,.25)",
-          borderRadius: 9, padding: "7px 14px", cursor: "pointer",
-          fontFamily: "'Orbitron',monospace", fontSize: 10,
-          fontWeight: 700, color: "#34d399", transition: "all .2s",
-        }}
-      >
+      <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+        {/* Balances */}
         <div style={{
-          width: 7, height: 7, background: "#10b981", borderRadius: "50%",
-          boxShadow: "0 0 5px #10b981",
-        }} />
-        {addr.slice(0, 4)}…{addr.slice(-4)}
-      </button>
+          display: "flex", gap: 6, alignItems: "center",
+          background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)",
+          borderRadius: 8, padding: "5px 10px",
+          fontFamily: "'Orbitron',monospace", fontSize: 9,
+        }}>
+          <span style={{ color: "rgba(255,255,255,.4)" }}>{solBalance.toFixed(2)} SOL</span>
+          {saiBalance > 0 && (
+            <span style={{ color: isHolder ? "#a78bfa" : "rgba(255,255,255,.35)" }}>
+              {saiBalance >= 1_000_000
+                ? `${(saiBalance / 1_000_000).toFixed(1)}M`
+                : saiBalance.toLocaleString()} $SAI
+              {isHolder && " ✓"}
+            </span>
+          )}
+        </div>
+
+        {/* Sign-in if not authenticated */}
+        {!isAuthenticated && (
+          <button
+            onClick={handleSignIn}
+            disabled={signing}
+            title="Sign to verify wallet ownership"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              background: "rgba(159,95,255,.1)", border: "1px solid rgba(159,95,255,.3)",
+              borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+              fontFamily: "'Orbitron',monospace", fontSize: 9,
+              fontWeight: 700, color: "#b97fff", opacity: signing ? .5 : 1,
+            }}
+          >
+            <LogIn size={10} />
+            {signing ? "Signing…" : "Sign In"}
+          </button>
+        )}
+
+        {/* Address / disconnect */}
+        <button
+          onClick={() => disconnect()}
+          title="Click to disconnect"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            background: isAuthenticated ? "rgba(16,185,129,.08)" : "rgba(245,158,11,.08)",
+            border: `1px solid ${isAuthenticated ? "rgba(16,185,129,.25)" : "rgba(245,158,11,.25)"}`,
+            borderRadius: 9, padding: "7px 14px", cursor: "pointer",
+            fontFamily: "'Orbitron',monospace", fontSize: 10,
+            fontWeight: 700, color: isAuthenticated ? "#34d399" : "#f59e0b",
+            transition: "all .2s",
+          }}
+        >
+          <div style={{
+            width: 7, height: 7,
+            background: isAuthenticated ? "#10b981" : "#f59e0b",
+            borderRadius: "50%",
+            boxShadow: `0 0 5px ${isAuthenticated ? "#10b981" : "#f59e0b"}`,
+          }} />
+          {addr.slice(0, 4)}…{addr.slice(-4)}
+        </button>
+      </div>
     );
   }
+
+  // Mobile deep-link hints
+  const isMobile = typeof window !== "undefined" && /iPhone|Android/i.test(navigator.userAgent);
 
   return (
     <>
@@ -101,12 +156,30 @@ export default function WalletButton() {
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {wallets.length === 0 ? (
                 <div style={{
-                  textAlign: "center", padding: "20px 0",
+                  textAlign: "center", padding: "16px 0",
                   color: "rgba(255,255,255,.38)", fontSize: 13,
                   fontFamily: "'Rajdhani',sans-serif", lineHeight: 1.7,
                 }}>
-                  No Solana wallet detected.<br />
-                  Install Phantom or Solflare to continue.
+                  No Solana wallet detected.
+                  {isMobile ? (
+                    <>
+                      <br />
+                      <a
+                        href={`https://phantom.app/ul/browse/${encodeURIComponent(window.location.href)}?ref=${encodeURIComponent(window.location.origin)}`}
+                        style={{ color: "#9f5fff", textDecoration: "none", display: "block", marginTop: 12 }}
+                      >
+                        Open in Phantom ↗
+                      </a>
+                      <a
+                        href={`https://solflare.com/ul/v1/browse/${encodeURIComponent(window.location.href)}?ref=${encodeURIComponent(window.location.origin)}`}
+                        style={{ color: "#f97316", textDecoration: "none", display: "block", marginTop: 8 }}
+                      >
+                        Open in Solflare ↗
+                      </a>
+                    </>
+                  ) : (
+                    <><br />Install Phantom or Solflare to continue.</>
+                  )}
                 </div>
               ) : (
                 wallets.map(w => (
