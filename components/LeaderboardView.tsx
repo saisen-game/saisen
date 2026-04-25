@@ -3,21 +3,21 @@
 import { useState, useEffect }   from "react";
 import Image                      from "next/image";
 import { ArrowLeft, RefreshCw }   from "lucide-react";
-import { getRankTier }            from "@/lib/elo";
+import { getRankTier, RATING_LABEL } from "@/lib/elo";
 import type { FarcasterUser }     from "@/lib/farcaster";
 import { LogoMark }               from "./icons";
 
-// ─── Types ───────────────────────────────────────────────────
 interface LBEntry {
-  id:      string;
-  display: string;
-  pfpUrl?: string;
-  elo:     number;
-  wins:    number;
-  losses:  number;
-  score:   number;
-  matches: number;
-  source:  "farcaster" | "wallet" | "both";
+  id:        string;
+  display:   string;
+  pfpUrl?:   string;
+  elo:       number;
+  wins:      number;
+  losses:    number;
+  score:     number;
+  bestScore: number;
+  matches:   number;
+  source:    "farcaster" | "wallet" | "both";
 }
 
 interface Props {
@@ -25,7 +25,6 @@ interface Props {
   onBack: () => void;
 }
 
-// ─── Spinner ─────────────────────────────────────────────────
 function Spinner() {
   return (
     <div style={{
@@ -37,10 +36,12 @@ function Spinner() {
   );
 }
 
+type SortKey = "elo" | "wins" | "score" | "bestScore";
+
 export default function LeaderboardView({ fcUser, onBack }: Props) {
   const [entries, setEntries] = useState<LBEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortBy,  setSortBy]  = useState<"elo" | "wins" | "score">("elo");
+  const [sortBy,  setSortBy]  = useState<SortKey>("elo");
 
   async function load() {
     setLoading(true);
@@ -54,11 +55,20 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
 
   useEffect(() => { load(); }, []);
 
-  const sorted = [...entries].sort((a, b) => b[sortBy] - a[sortBy]);
+  const sorted = [...entries].sort((a, b) => {
+    const av = sortBy === "bestScore" ? (a.bestScore ?? a.score) : (a as any)[sortBy];
+    const bv = sortBy === "bestScore" ? (b.bestScore ?? b.score) : (b as any)[sortBy];
+    return bv - av;
+  });
 
-  const myId = fcUser
-    ? String(fcUser.fid)
-    : null;
+  const myId = fcUser ? String(fcUser.fid) : null;
+
+  const sortTabs: { key: SortKey; label: string }[] = [
+    { key: "elo",       label: RATING_LABEL },
+    { key: "wins",      label: "WINS"       },
+    { key: "bestScore", label: "BEST"       },
+    { key: "score",     label: "TOTAL"      },
+  ];
 
   return (
     <div style={{ minHeight: "100vh", background: "#06060f", color: "#fff" }}>
@@ -138,9 +148,9 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
           </div>
         </div>
 
-        {/* ── My rank (if logged in via Farcaster) ── */}
+        {/* ── My rank ── */}
         {fcUser && !loading && (() => {
-          const me = sorted.find(e => e.id === String(fcUser.fid));
+          const me   = sorted.find(e => e.id === String(fcUser.fid));
           const rank = me ? sorted.indexOf(me) + 1 : null;
           if (!me) return null;
           const tier = getRankTier(me.elo);
@@ -167,14 +177,19 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
                     fontSize: 11, color: tier.color, fontFamily: "'Orbitron',monospace",
                     fontWeight: 700, marginTop: 2,
                   }}>
-                    {tier.emoji} {tier.name} · {me.elo} ELO
+                    {tier.emoji} {tier.name} · {me.elo} {RATING_LABEL}
                   </div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-                {[["WINS", me.wins, "#4ade80"], ["SCORE", me.score, "#60a5fa"], ["MATCHES", me.matches, "rgba(255,255,255,.45)"]].map(([l, v, c]) => (
-                  <div key={String(l)} style={{ textAlign: "center" }}>
-                    <div style={{ fontFamily: "'Orbitron',monospace", fontSize: 18, fontWeight: 900, color: String(c) }}>{v}</div>
+                {([
+                  ["WINS",  me.wins,              "#4ade80"],
+                  ["BEST",  me.bestScore ?? 0,    "#b97fff"],
+                  ["TOTAL", me.score,             "#60a5fa"],
+                  ["PLAYED",me.matches,           "rgba(255,255,255,.45)"],
+                ] as [string, number, string][]).map(([l, v, c]) => (
+                  <div key={l} style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "'Orbitron',monospace", fontSize: 18, fontWeight: 900, color: c }}>{v}</div>
                     <div style={{ fontSize: 9, color: "rgba(255,255,255,.28)", letterSpacing: ".16em", marginTop: 2 }}>{l}</div>
                   </div>
                 ))}
@@ -185,20 +200,20 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
 
         {/* ── Sort tabs ── */}
         <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
-          {(["elo","wins","score"] as const).map(k => (
+          {sortTabs.map(({ key, label }) => (
             <button
-              key={k}
-              onClick={() => setSortBy(k)}
+              key={key}
+              onClick={() => setSortBy(key)}
               style={{
                 padding: "7px 14px", borderRadius: 8, cursor: "pointer",
                 border: "1px solid", fontFamily: "'Orbitron',monospace",
                 fontSize: 10, fontWeight: 700, letterSpacing: ".1em", transition: "all .2s",
-                background:   sortBy === k ? "rgba(159,95,255,.18)" : "transparent",
-                borderColor:  sortBy === k ? "rgba(159,95,255,.5)"  : "rgba(255,255,255,.1)",
-                color:        sortBy === k ? "#b97fff"               : "rgba(255,255,255,.35)",
+                background:   sortBy === key ? "rgba(159,95,255,.18)" : "transparent",
+                borderColor:  sortBy === key ? "rgba(159,95,255,.5)"  : "rgba(255,255,255,.1)",
+                color:        sortBy === key ? "#b97fff"               : "rgba(255,255,255,.35)",
               }}
             >
-              {k.toUpperCase()}
+              {label}
             </button>
           ))}
         </div>
@@ -206,17 +221,17 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
         {/* ── Column headers ── */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "40px 1fr 72px 55px 55px 62px",
+          gridTemplateColumns: "40px 1fr 72px 55px 55px 60px",
           gap: 8, padding: "7px 16px", marginBottom: 6,
           fontSize: 9, color: "rgba(255,255,255,.2)",
           fontFamily: "'Orbitron',monospace", letterSpacing: ".15em",
         }}>
           <div>#</div>
           <div>PLAYER</div>
-          <div style={{ textAlign: "right" }}>ELO</div>
+          <div style={{ textAlign: "right" }}>{RATING_LABEL}</div>
           <div style={{ textAlign: "right" }}>WINS</div>
-          <div style={{ textAlign: "right" }}>SCORE</div>
-          <div style={{ textAlign: "right" }}>MATCHES</div>
+          <div style={{ textAlign: "right" }}>BEST</div>
+          <div style={{ textAlign: "right" }}>PLAYED</div>
         </div>
 
         {/* ── Rows ── */}
@@ -257,7 +272,7 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
                   key={entry.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "40px 1fr 72px 55px 55px 62px",
+                    gridTemplateColumns: "40px 1fr 72px 55px 55px 60px",
                     gap: 8, alignItems: "center",
                     padding: "12px 16px", borderRadius: 13,
                     background:   isMe ? "rgba(159,95,255,.08)" : "rgba(255,255,255,.02)",
@@ -303,9 +318,13 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
                     ) : (
                       <div style={{
                         width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-                        background: "linear-gradient(135deg,rgba(159,95,255,.3),rgba(59,130,246,.3))",
+                        background: entry.id.startsWith("agent:")
+                          ? "linear-gradient(135deg,rgba(16,185,129,.3),rgba(59,130,246,.3))"
+                          : "linear-gradient(135deg,rgba(159,95,255,.3),rgba(59,130,246,.3))",
                         display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
-                      }}>⚡</div>
+                      }}>
+                        {entry.id.startsWith("agent:") ? "🤖" : "⚡"}
+                      </div>
                     )}
                     <div style={{ overflow: "hidden" }}>
                       <div style={{
@@ -324,7 +343,7 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
                     </div>
                   </div>
 
-                  {/* ELO */}
+                  {/* Rating */}
                   <div style={{
                     textAlign: "right", fontFamily: "'Orbitron',monospace",
                     fontWeight: 700, fontSize: 14, color: tier.color,
@@ -336,11 +355,11 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
                     fontSize: 13, fontWeight: 700, color: "#4ade80",
                   }}>{entry.wins}</div>
 
-                  {/* Score */}
+                  {/* Best score */}
                   <div style={{
                     textAlign: "right", fontFamily: "'Orbitron',monospace",
-                    fontSize: 12, color: "rgba(255,255,255,.45)",
-                  }}>{entry.score}</div>
+                    fontSize: 12, color: "#b97fff",
+                  }}>{entry.bestScore ?? entry.score}</div>
 
                   {/* Matches */}
                   <div style={{
@@ -353,7 +372,6 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
           </div>
         )}
 
-        {/* Footer note */}
         {!loading && sorted.length > 0 && (
           <p style={{
             textAlign: "center", marginTop: 28, fontSize: 11,
@@ -361,7 +379,7 @@ export default function LeaderboardView({ fcUser, onBack }: Props) {
             fontWeight: 500,
           }}>
             Showing {sorted.length} player{sorted.length !== 1 ? "s" : ""} ·
-            On-chain ELO available after wallet submission
+            Scores auto-submitted after every match
           </p>
         )}
       </div>

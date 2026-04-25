@@ -1,6 +1,7 @@
-export const DEFAULT_ELO = 1000;
-export const WIN_DELTA   = 20;
-export const LOSS_DELTA  = 15;
+export const DEFAULT_ELO  = 1000;
+export const WIN_DELTA    = 20;
+export const LOSS_DELTA   = 15;
+export const RATING_LABEL = "$SAI";
 
 export function applyElo(current: number, win: boolean): number {
   if (win) return current + WIN_DELTA;
@@ -12,7 +13,7 @@ export interface RankTier {
   color: string;
   emoji: string;
   min:   number;
-  next:  number | null; // ELO needed for next tier, null if max
+  next:  number | null;
 }
 
 const TIERS: RankTier[] = [
@@ -29,7 +30,6 @@ export function getRankTier(elo: number): RankTier {
   );
 }
 
-/** Returns 0–100 progress toward the next tier. */
 export function getTierProgress(elo: number): number {
   const tier = getRankTier(elo);
   if (!tier.next) return 100;
