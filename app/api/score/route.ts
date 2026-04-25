@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kv }                        from "@vercel/kv";
 
-const LB_KEY  = "saisen:lb:v1";
-const MAX_CAP = 500;
-const MAX_SCORE = 55;
+const LB_KEY     = "saisen:lb:v1";
+const RL_PFX     = "saisen:ratelimit:score:";
+const MAX_CAP    = 500;
+const MAX_SCORE  = 55;
 const MAX_RATING = 5000;
+const RL_TTL_SEC = 55; // 1 score per ~60s per identity
 
 interface LBEntry {
   id:        string;
@@ -50,6 +52,29 @@ async function saveAll(data: LBEntry[]): Promise<void> {
   }
 }
 
+// In-memory rate-limit fallback
+const _rlMem = new Map<string, number>();
+
+async function isRateLimited(id: string): Promise<boolean> {
+  const key = RL_PFX + id;
+  try {
+    const existing = await kv.get(key);
+    return !!existing;
+  } catch {
+    const last = _rlMem.get(key) ?? 0;
+    return Date.now() - last < RL_TTL_SEC * 1000;
+  }
+}
+
+async function setRateLimit(id: string): Promise<void> {
+  const key = RL_PFX + id;
+  try {
+    await kv.set(key, 1, { ex: RL_TTL_SEC });
+  } catch {
+    _rlMem.set(key, Date.now());
+  }
+}
+
 export async function POST(req: NextRequest) {
   let body: ScoreBody;
   try {
@@ -58,11 +83,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (typeof body.win   !== "boolean") return NextResponse.json({ error: "Missing win"   }, { status: 400 });
-  if (typeof body.score !== "number")  return NextResponse.json({ error: "Missing score" }, { status: 400 });
-  if (typeof body.elo   !== "number")  return NextResponse.json({ error: "Missing elo"   }, { status: 400 });
-  if (body.score > MAX_SCORE)          return NextResponse.json({ error: "Score too high" }, { status: 400 });
+  if (typeof body.win   !== "boolean") return NextResponse.json({ error: "Missing win"    }, { status: 400 });
+  if (typeof body.score !== "number")  return NextResponse.json({ error: "Missing score"  }, { status: 400 });
+  if (typeof body.elo   !== "number")  return NextResponse.json({ error: "Missing elo"    }, { status: 400 });
+  if (body.score > MAX_SCORE)          return NextResponse.json({ error: "Score too high"  }, { status: 400 });
   if (body.elo   > MAX_RATING)         return NextResponse.json({ error: "Rating too high" }, { status: 400 });
+  if (body.score < 0)                  return NextResponse.json({ error: "Invalid score"   }, { status: 400 });
 
   const id = body.fid
     ? String(body.fid)
@@ -71,6 +97,12 @@ export async function POST(req: NextRequest) {
   if (!id) {
     return NextResponse.json({ error: "Identity required (fid or address)" }, { status: 400 });
   }
+
+  // Rate limit: 1 submission per ~60s per identity
+  if (await isRateLimited(id)) {
+    return NextResponse.json({ error: "Rate limited — one score per match" }, { status: 429 });
+  }
+  await setRateLimit(id);
 
   const entries = await getAll();
   const idx     = entries.findIndex(e => e.id === id);
@@ -113,5 +145,25 @@ export async function POST(req: NextRequest) {
   }
 
   await saveAll(entries);
+
+  // Also log to match feed
+  try {
+    const matchEntry = {
+      id:          `${id}:${Date.now()}`,
+      playerA:     body.username ? `@${body.username}` : body.address ? `${body.address.slice(0, 6)}…${body.address.slice(-4)}` : id,
+      playerB:     "Bot",
+      scoreA:      body.score,
+      scoreB:      body.score > 0 ? Math.max(0, body.score - Math.floor(Math.random() * 5)) : body.score + Math.floor(Math.random() * 5),
+      winner:      body.win ? "A" : "B",
+      mode:        "human_vs_bot",
+      timestamp:   Date.now(),
+    };
+    const MATCHES_KEY = "saisen:matches:v1";
+    const rawMatches  = await kv.get<string>(MATCHES_KEY);
+    const matches     = rawMatches ? JSON.parse(rawMatches) : [];
+    matches.unshift(matchEntry);
+    await kv.set(MATCHES_KEY, JSON.stringify(matches.slice(0, 500)));
+  } catch {}
+
   return NextResponse.json({ ok: true });
 }

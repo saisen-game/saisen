@@ -7,6 +7,7 @@ import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { clusterApiUrl } from "@solana/web3.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import sdk from "@farcaster/miniapp-sdk";
+import { WalletCtxProvider } from "@/context/WalletContext";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000 } },
@@ -28,7 +29,9 @@ export default function Providers({ children }: { children: ReactNode }) {
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <QueryClientProvider client={queryClient}>
-          {children}
+          <WalletCtxProvider>
+            {children}
+          </WalletCtxProvider>
         </QueryClientProvider>
       </WalletProvider>
     </ConnectionProvider>

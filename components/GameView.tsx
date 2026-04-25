@@ -14,20 +14,22 @@ import { applyElo, DEFAULT_ELO }  from "@/lib/elo";
 import ResultScreen               from "./ResultScreen";
 import FarcasterProfile           from "./FarcasterProfile";
 import WalletButton               from "./WalletButton";
+import SkillBar, { type ActiveSkillState } from "./SkillBar";
 import { LogoMark, ToriiIcon }    from "./icons";
 import type { FarcasterUser }     from "@/lib/farcaster";
 import { Zap, ArrowLeft }         from "lucide-react";
 
 // ─── Constants ───────────────────────────────────────────────
-const GAME_MS = 30_000;
-const TICK_MS = 50;
+const GAME_MS      = 30_000;
+const TICK_MS      = 50;
+const SPAWN_BASE   = 640;
 const TARGET_COLORS = [
   "#9f5fff","#3b82f6","#f43f5e","#10b981","#f59e0b","#ec4899","#06b6d4",
 ];
 
 // ─── Types ───────────────────────────────────────────────────
 type Phase = "lobby" | "countdown" | "playing" | "result";
-interface Target { id:string; x:number; y:number; sz:number; c:string; }
+interface Target { id:string; x:number; y:number; sz:number; c:string; ghost?:boolean; }
 interface Burst  { id:string; x:number; y:number; c:string; }
 interface Popup  { id:string; x:number; y:number; txt:string; }
 
@@ -38,6 +40,18 @@ function getLocalElo(key: string) {
 }
 function setLocalElo(key: string, elo: number) {
   try { localStorage.setItem(`saisen:elo:${key}`, String(elo)); } catch {}
+}
+
+// ─── Owned skills from API ────────────────────────────────────
+async function fetchOwnedSkills(address: string): Promise<string[]> {
+  try {
+    const res = await fetch(`/api/skills?address=${address}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.owned ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // ─── Auto-submit score to leaderboard API ────────────────────
@@ -93,11 +107,18 @@ export default function GameView({ fcUser, onBack }: Props) {
   const [bursts,     setBursts]   = useState<Burst[]>([]);
   const [popups,     setPops]     = useState<Popup[]>([]);
   const [combo,      setCombo]    = useState(0);
+  const [nowMs,      setNowMs]    = useState(Date.now());
   const [result,     setResult]   = useState<{
     win: boolean; eloChange: number; newElo: number;
     playerScore: number; botScore: number;
     matchDuration: number; validation: ReturnType<typeof validateMatch>;
   } | null>(null);
+
+  // Skill state
+  const [ownedSkills,    setOwnedSkills]    = useState<string[]>([]);
+  const skillActiveUntil   = useRef<Record<string, number>>({});
+  const skillCooldownUntil = useRef<Record<string, number>>({});
+  const shieldActive       = useRef(false);
 
   const identityKey = fcUser ? `fid:${fcUser.fid}` : address ?? "guest";
   const eloRef = useRef(getLocalElo(identityKey));
@@ -112,13 +133,50 @@ export default function GameView({ fcUser, onBack }: Props) {
     spawnIv:     null as ReturnType<typeof setInterval> | null,
     tickIv:      null as ReturnType<typeof setInterval> | null,
     cdIv:        null as ReturnType<typeof setInterval> | null,
+    spawnMs:     SPAWN_BASE,
   });
+
+  // Load owned skills on mount / wallet change
+  useEffect(() => {
+    if (address) fetchOwnedSkills(address).then(setOwnedSkills);
+    else setOwnedSkills([]);
+  }, [address]);
 
   const cleanup = () => {
     if (r.current.spawnIv) clearInterval(r.current.spawnIv);
     if (r.current.tickIv)  clearInterval(r.current.tickIv);
     if (r.current.cdIv)    clearInterval(r.current.cdIv);
   };
+
+  // ── Respawn loop (interval changes with Speed Burst) ─────────
+  const startSpawnLoop = useCallback(() => {
+    if (r.current.spawnIv) clearInterval(r.current.spawnIv);
+    r.current.spawnIv = setInterval(() => {
+      const id   = Math.random().toString(36).slice(2, 9);
+      const life = Math.random() * 1200 + 800;
+      const t: Target = {
+        id,
+        x:  Math.random() * 80 + 5,
+        y:  Math.random() * 72 + 8,
+        sz: Math.floor(Math.random() * 18) + 33,
+        c:  TARGET_COLORS[Math.floor(Math.random() * TARGET_COLORS.length)],
+      };
+
+      // Ghost Vision: pre-spawn as ghost 400ms early
+      if (ownedSkills.includes("ghost_vision") &&
+          skillActiveUntil.current["ghost_vision"] > Date.now()) {
+        const ghostT = { ...t, ghost: true };
+        setTgts(prev => [...prev.slice(-15), ghostT]);
+        setTimeout(() => {
+          setTgts(prev => prev.map(x => x.id === t.id ? { ...x, ghost: false } : x));
+        }, 400);
+      } else {
+        setTgts(prev => [...prev.slice(-15), t]);
+      }
+
+      setTimeout(() => setTgts(prev => prev.filter(x => x.id !== id)), life);
+    }, r.current.spawnMs);
+  }, [ownedSkills]);
 
   const doEnd = useCallback(async () => {
     cleanup();
@@ -142,7 +200,6 @@ export default function GameView({ fcUser, onBack }: Props) {
 
     setLocalElo(identityKey, newElo);
 
-    // Auto-submit score
     await persistResult(
       fcUser?.fid     ?? null,
       fcUser?.username ?? null,
@@ -165,34 +222,42 @@ export default function GameView({ fcUser, onBack }: Props) {
     r.current.lastHit    = 0;
     r.current.startEpoch = Date.now();
     r.current.botTL      = generateBotTimeline(difficulty, GAME_MS);
+    r.current.spawnMs    = SPAWN_BASE;
+
+    // Reset skill state
+    skillActiveUntil.current   = {};
+    skillCooldownUntil.current = {};
+    shieldActive.current       = false;
 
     setPScore(0); setBScore(0); setCombo(0);
     setTgts([]); setBursts([]); setPops([]);
     setElapsed(0);
 
-    r.current.spawnIv = setInterval(() => {
-      const id   = Math.random().toString(36).slice(2, 9);
-      const life = Math.random() * 1200 + 800;
-      const t: Target = {
-        id,
-        x:  Math.random() * 80 + 5,
-        y:  Math.random() * 72 + 8,
-        sz: Math.floor(Math.random() * 18) + 33,
-        c:  TARGET_COLORS[Math.floor(Math.random() * TARGET_COLORS.length)],
-      };
-      setTgts(prev => [...prev.slice(-15), t]);
-      setTimeout(() => setTgts(prev => prev.filter(x => x.id !== id)), life);
-    }, 640);
+    startSpawnLoop();
 
     r.current.tickIv = setInterval(() => {
-      const el = Date.now() - r.current.startEpoch;
+      const now = Date.now();
+      const el  = now - r.current.startEpoch;
       setElapsed(el);
-      setBScore(getBotScoreAt(r.current.botTL, el));
+      setNowMs(now);
+
+      // Time Freeze: pause visible countdown (engine keeps running)
+      // The timer visual is paused when freeze is active
+
+      setBScore(prev => {
+        const raw = getBotScoreAt(r.current.botTL, el);
+        // Score Shield: block next bot score increment
+        if (shieldActive.current && raw > prev) {
+          shieldActive.current = false;
+          return prev; // absorb this tick's bot point
+        }
+        return raw;
+      });
       if (el >= GAME_MS) doEnd();
     }, TICK_MS);
 
     setPhase("playing");
-  }, [difficulty, doEnd]);
+  }, [difficulty, doEnd, startSpawnLoop]);
 
   const startCountdown = () => {
     setPhase("countdown"); setCd(3);
@@ -204,10 +269,36 @@ export default function GameView({ fcUser, onBack }: Props) {
     }, 800);
   };
 
+  // ── Skill activation ──────────────────────────────────────────
+  const activateSkill = useCallback((skillId: string, durationMs: number, cooldownMs: number) => {
+    const now = Date.now();
+    skillActiveUntil.current[skillId]   = now + durationMs;
+    skillCooldownUntil.current[skillId] = now + durationMs + cooldownMs;
+
+    if (skillId === "speed_burst") {
+      r.current.spawnMs = SPAWN_BASE / 2;
+      startSpawnLoop();
+      setTimeout(() => {
+        r.current.spawnMs = SPAWN_BASE;
+        startSpawnLoop();
+      }, durationMs);
+    }
+
+    if (skillId === "score_shield") {
+      shieldActive.current = true;
+    }
+  }, [startSpawnLoop]);
+
   const hitTarget = (t: Target, e: React.MouseEvent) => {
+    if (t.ghost) return; // ghost targets not clickable yet
     e.stopPropagation();
     setTgts(prev => prev.filter(x => x.id !== t.id));
-    r.current.ps++;
+
+    const isDouble = ownedSkills.includes("double_points") &&
+      skillActiveUntil.current["double_points"] > Date.now();
+
+    const pts = isDouble ? 2 : 1;
+    r.current.ps += pts;
     setPScore(r.current.ps);
     r.current.clicks = recordClick(r.current.clicks, r.current.startEpoch);
 
@@ -222,16 +313,51 @@ export default function GameView({ fcUser, onBack }: Props) {
     setTimeout(() => setBursts(prev => prev.filter(b => b.id !== bid)), 450);
 
     const pid = Math.random().toString(36).slice(2, 7);
-    setPops(prev => [...prev.slice(-6), { id: pid, x: t.x, y: t.y, txt: nc > 2 ? `+1 🔥×${nc}` : "+1" }]);
+    const popTxt = isDouble
+      ? (nc > 2 ? `+2 🔥×${nc}` : "+2")
+      : (nc > 2 ? `+1 🔥×${nc}` : "+1");
+    setPops(prev => [...prev.slice(-6), { id: pid, x: t.x, y: t.y, txt: popTxt }]);
     setTimeout(() => setPops(prev => prev.filter(p => p.id !== pid)), 900);
   };
 
   useEffect(() => () => cleanup(), []);
 
-  const timeLeft = Math.max(0, Math.ceil((GAME_MS - elapsed) / 1000));
-  const timePct  = ((GAME_MS - elapsed) / GAME_MS) * 100;
+  // Time Freeze: pause the visual countdown
+  const isFrozen = ownedSkills.includes("time_freeze") &&
+    (skillActiveUntil.current["time_freeze"] ?? 0) > nowMs;
+  const frozenAt = useRef(0);
+  if (isFrozen && frozenAt.current === 0) frozenAt.current = elapsed;
+  if (!isFrozen) frozenAt.current = 0;
+
+  const displayElapsed = isFrozen ? frozenAt.current : elapsed;
+  const timeLeft = Math.max(0, Math.ceil((GAME_MS - displayElapsed) / 1000));
+  const timePct  = ((GAME_MS - elapsed) / GAME_MS) * 100; // real pct for arc
   const timerC   = timeLeft > 15 ? "#9f5fff" : timeLeft > 7 ? "#f59e0b" : "#f43f5e";
   const circ     = 2 * Math.PI * 30;
+
+  // Build SkillBar state from owned skills
+  const SKILL_META: Record<string, { name: string; icon: string; rarity: "common"|"rare"|"legendary"; durationMs: number; cooldownMs: number }> = {
+    time_freeze:   { name: "Time Freeze",   icon: "❄️", rarity: "legendary", durationMs: 5_000,  cooldownMs: 60_000 },
+    speed_burst:   { name: "Speed Burst",   icon: "⚡", rarity: "rare",      durationMs: 5_000,  cooldownMs: 45_000 },
+    ghost_vision:  { name: "Ghost Vision",  icon: "👁️", rarity: "rare",      durationMs: 8_000,  cooldownMs: 50_000 },
+    double_points: { name: "Double Points", icon: "✖️", rarity: "rare",      durationMs: 5_000,  cooldownMs: 55_000 },
+    score_shield:  { name: "Score Shield",  icon: "🛡️", rarity: "common",    durationMs: 0,      cooldownMs: 30_000 },
+  };
+
+  const skillBarStates: ActiveSkillState[] = ownedSkills
+    .filter(id => SKILL_META[id])
+    .map(id => {
+      const meta = SKILL_META[id];
+      return {
+        id,
+        name:          meta.name,
+        icon:          meta.icon,
+        rarity:        meta.rarity,
+        activeUntil:   skillActiveUntil.current[id]   ?? 0,
+        cooldownUntil: skillCooldownUntil.current[id] ?? 0,
+        onActivate:    () => activateSkill(id, meta.durationMs, meta.cooldownMs),
+      };
+    });
 
   if (phase === "result" && result) {
     return (
@@ -337,6 +463,17 @@ export default function GameView({ fcUser, onBack }: Props) {
               ))}
             </div>
 
+            {ownedSkills.length > 0 && (
+              <div style={{
+                marginBottom: 20, padding: "10px 14px",
+                background: "rgba(159,95,255,.06)", border: "1px solid rgba(159,95,255,.18)",
+                borderRadius: 10, fontSize: 12, color: "rgba(255,255,255,.45)",
+                fontFamily: "'Rajdhani',sans-serif",
+              }}>
+                🎮 {ownedSkills.length} skill{ownedSkills.length > 1 ? "s" : ""} active · Use during match
+              </div>
+            )}
+
             <button
               onClick={startCountdown}
               style={{
@@ -414,7 +551,7 @@ export default function GameView({ fcUser, onBack }: Props) {
                 <div style={{ position: "relative", width: 72, height: 72 }}>
                   <svg width="72" height="72" style={{ transform: "rotate(-90deg)", display: "block" }}>
                     <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="5" />
-                    <circle cx="36" cy="36" r="30" fill="none" stroke={timerC} strokeWidth="5"
+                    <circle cx="36" cy="36" r="30" fill="none" stroke={isFrozen ? "#60a5fa" : timerC} strokeWidth="5"
                       strokeDasharray={`${circ * timePct / 100} ${circ}`}
                       strokeLinecap="round"
                       style={{ transition: "stroke-dasharray .1s linear, stroke .5s" }}
@@ -423,15 +560,23 @@ export default function GameView({ fcUser, onBack }: Props) {
                   <div style={{
                     position: "absolute", inset: 0, display: "flex", alignItems: "center",
                     justifyContent: "center", fontFamily: "'Orbitron',monospace",
-                    fontSize: 20, fontWeight: 900, color: timerC,
+                    fontSize: 20, fontWeight: 900, color: isFrozen ? "#60a5fa" : timerC,
                   }}>
                     {timeLeft}
                   </div>
                 </div>
-                <div style={{
-                  fontFamily: "'Orbitron',monospace", fontSize: 9,
-                  color: "rgba(255,255,255,.2)", letterSpacing: ".18em", marginTop: 4,
-                }}>VS</div>
+                {isFrozen && (
+                  <div style={{
+                    fontFamily: "'Orbitron',monospace", fontSize: 8, color: "#60a5fa",
+                    letterSpacing: ".15em", marginTop: 3,
+                  }}>FROZEN</div>
+                )}
+                {!isFrozen && (
+                  <div style={{
+                    fontFamily: "'Orbitron',monospace", fontSize: 9,
+                    color: "rgba(255,255,255,.2)", letterSpacing: ".18em", marginTop: 4,
+                  }}>VS</div>
+                )}
               </div>
 
               {/* Bot score */}
@@ -448,6 +593,11 @@ export default function GameView({ fcUser, onBack }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* Skill Bar */}
+            {skillBarStates.length > 0 && (
+              <SkillBar skills={skillBarStates} nowMs={nowMs} />
+            )}
 
             {/* Arena */}
             <div style={{
@@ -476,15 +626,19 @@ export default function GameView({ fcUser, onBack }: Props) {
                     position: "absolute", left: `${t.x}%`, top: `${t.y}%`,
                     transform: "translate(-50%,-50%)",
                     width: t.sz, height: t.sz, borderRadius: "50%",
-                    background: `radial-gradient(circle at 38% 34%, ${t.c}ff, ${t.c}88)`,
-                    boxShadow: `0 0 12px ${t.c}88, 0 0 28px ${t.c}44`,
-                    border: `2px solid ${t.c}dd`,
-                    cursor: "crosshair", padding: 0, outline: "none",
+                    background: t.ghost
+                      ? "transparent"
+                      : `radial-gradient(circle at 38% 34%, ${t.c}ff, ${t.c}88)`,
+                    boxShadow: t.ghost ? "none" : `0 0 12px ${t.c}88, 0 0 28px ${t.c}44`,
+                    border: t.ghost ? `2px dashed ${t.c}66` : `2px solid ${t.c}dd`,
+                    cursor: t.ghost ? "default" : "crosshair",
+                    padding: 0, outline: "none",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    zIndex: 2,
+                    zIndex: 2, opacity: t.ghost ? 0.4 : 1,
+                    transition: "opacity .3s",
                   }}
                 >
-                  <BallLogo size={t.sz} />
+                  {!t.ghost && <BallLogo size={t.sz} />}
                 </button>
               ))}
 

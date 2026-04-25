@@ -413,7 +413,7 @@ export default function AgentView({ onBack }: Props) {
             </p>
           </div>
 
-          {address && (
+          {address && agents.length === 0 && (
             <button
               onClick={() => setPanel("create")}
               style={{
@@ -427,6 +427,15 @@ export default function AgentView({ onBack }: Props) {
             >
               <Plus size={13} /> New Agent
             </button>
+          )}
+          {address && agents.length >= 1 && (
+            <div style={{
+              padding: "8px 14px", borderRadius: 8,
+              background: "rgba(74,222,128,.06)", border: "1px solid rgba(74,222,128,.2)",
+              fontFamily: "'Orbitron',monospace", fontSize: 10, color: "#4ade80",
+            }}>
+              ✓ Agent deployed
+            </div>
           )}
         </div>
 
