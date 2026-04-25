@@ -9,6 +9,26 @@ const nextConfig = {
       { protocol: "https", hostname: "**.cloudflare-ipfs.com" },
     ],
   },
+
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        os: false,
+        path: false,
+        crypto: false,
+        stream: false,
+        buffer: require.resolve("buffer/"),
+      };
+    }
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "node:buffer": require.resolve("buffer/"),
+    };
+    return config;
+  },
+
   async headers() {
     return [
       {

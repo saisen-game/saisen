@@ -1,21 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Zap, Trophy }         from "lucide-react";
+import { Zap, Trophy, Bot, ShoppingBag, Copy, Check } from "lucide-react";
 import { initFarcaster, type FarcasterUser } from "@/lib/farcaster";
-import GameView        from "@/components/GameView";
-import LeaderboardView from "@/components/LeaderboardView";
-import FarcasterProfile from "@/components/FarcasterProfile";
-import WalletButton    from "@/components/WalletButton";
+import GameView          from "@/components/GameView";
+import LeaderboardView   from "@/components/LeaderboardView";
+import AgentView         from "@/components/AgentView";
+import MarketplaceView   from "@/components/MarketplaceView";
+import FarcasterProfile  from "@/components/FarcasterProfile";
+import WalletButton      from "@/components/WalletButton";
 import { ToriiIcon, LogoMark } from "@/components/icons";
+import { SAI_CONTRACT }  from "@/lib/skills";
 
-type View = "home" | "game" | "leaderboard";
+type View = "home" | "game" | "leaderboard" | "agents" | "marketplace";
 
 export default function Home() {
   const [fcUser,   setFcUser]   = useState<FarcasterUser | null>(null);
   const [inFC,     setInFC]     = useState(false);
   const [view,     setView]     = useState<View>("home");
   const [hydrated, setHydrated] = useState(false);
+  const [cacopied, setCaCopied] = useState(false);
 
   useEffect(() => {
     initFarcaster().then((ctx) => {
@@ -24,6 +28,14 @@ export default function Home() {
       setHydrated(true);
     });
   }, []);
+
+  const copyCA = async () => {
+    try {
+      await navigator.clipboard.writeText(SAI_CONTRACT);
+      setCaCopied(true);
+      setTimeout(() => setCaCopied(false), 2000);
+    } catch {}
+  };
 
   // ── Loading splash ───────────────────────────────────────────
   if (!hydrated) {
@@ -45,13 +57,10 @@ export default function Home() {
     );
   }
 
-  if (view === "game") {
-    return <GameView fcUser={fcUser} onBack={() => setView("home")} />;
-  }
-
-  if (view === "leaderboard") {
-    return <LeaderboardView fcUser={fcUser} onBack={() => setView("home")} />;
-  }
+  if (view === "game")        return <GameView        fcUser={fcUser} onBack={() => setView("home")} />;
+  if (view === "leaderboard") return <LeaderboardView fcUser={fcUser} onBack={() => setView("home")} />;
+  if (view === "agents")      return <AgentView       onBack={() => setView("home")} />;
+  if (view === "marketplace") return <MarketplaceView onBack={() => setView("home")} />;
 
   // ── Home ─────────────────────────────────────────────────────
   return (
@@ -98,7 +107,7 @@ export default function Home() {
       {/* ── Hero ── */}
       <div style={{
         maxWidth: 860, margin: "0 auto",
-        padding: "clamp(44px,8vw,96px) 22px",
+        padding: "clamp(36px,7vw,80px) 22px 0",
         textAlign: "center", position: "relative", zIndex: 1,
       }}>
 
@@ -127,7 +136,7 @@ export default function Home() {
               width: 7, height: 7, background: "#f59e0b", borderRadius: "50%",
               display: "inline-block",
             }} />
-            Browser mode · Open in Warpcast for full identity
+            Browser mode · Connect wallet or open in Warpcast
           </div>
         )}
 
@@ -156,14 +165,14 @@ export default function Home() {
 
         <p style={{
           color: "rgba(255,255,255,.36)", fontSize: 15, lineHeight: 1.75,
-          maxWidth: 440, margin: "0 auto 44px", fontWeight: 500,
+          maxWidth: 440, margin: "0 auto 36px", fontWeight: 500,
         }}>
-          Skill-based 1v1 reaction duels. Your ELO lives on-chain.
-          Your identity is your Farcaster account.
+          Skill-based 1v1 reaction duels. Your $SAI rating lives on-chain.
+          Powered by Solana.
         </p>
 
         {/* CTAs */}
-        <div style={{ display: "flex", gap: 13, justifyContent: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 13, justifyContent: "center", flexWrap: "wrap", marginBottom: 20 }}>
           <button
             onClick={() => setView("game")}
             style={{
@@ -201,15 +210,58 @@ export default function Home() {
           </button>
         </div>
 
+        {/* Secondary nav */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginBottom: 48 }}>
+          <button
+            onClick={() => setView("agents")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.1)",
+              borderRadius: 10, padding: "11px 22px", cursor: "pointer",
+              fontFamily: "'Orbitron',monospace", fontSize: 11, fontWeight: 700,
+              color: "rgba(255,255,255,.5)", transition: "all .15s",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(159,95,255,.3)";
+              (e.currentTarget as HTMLElement).style.color = "#b97fff";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,.1)";
+              (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,.5)";
+            }}>
+            <Bot size={14} /> Agents
+          </button>
+
+          <button
+            onClick={() => setView("marketplace")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.1)",
+              borderRadius: 10, padding: "11px 22px", cursor: "pointer",
+              fontFamily: "'Orbitron',monospace", fontSize: 11, fontWeight: 700,
+              color: "rgba(255,255,255,.5)", transition: "all .15s",
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(159,95,255,.3)";
+              (e.currentTarget as HTMLElement).style.color = "#b97fff";
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,.1)";
+              (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,.5)";
+            }}>
+            <ShoppingBag size={14} /> Marketplace
+          </button>
+        </div>
+
         {/* Stats strip */}
         <div style={{
           display: "flex", gap: 28, justifyContent: "center",
-          flexWrap: "wrap", marginTop: 54,
+          flexWrap: "wrap", marginBottom: 40,
         }}>
           {[
             ["30s",      "Match Length"],
             ["Season 1", "Live Now"],
-            ["ELO",      "On-Chain"],
+            ["$SAI",     "On Solana"],
             ["100%",     "Skill Based"],
           ].map(([v, l]) => (
             <div key={l} style={{ textAlign: "center" }}>
@@ -223,6 +275,45 @@ export default function Home() {
               }}>{l}</div>
             </div>
           ))}
+        </div>
+
+        {/* $SAI Token CA */}
+        <div style={{
+          padding: "14px 20px",
+          background: "rgba(159,95,255,.05)", border: "1px solid rgba(159,95,255,.15)",
+          borderRadius: 14, marginBottom: 48,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexWrap: "wrap", gap: 14,
+        }}>
+          <div style={{ textAlign: "left" }}>
+            <div style={{
+              fontFamily: "'Orbitron',monospace", fontSize: 9,
+              color: "#9f5fff", letterSpacing: ".2em", marginBottom: 5,
+            }}>
+              $SAI TOKEN CONTRACT (SOLANA)
+            </div>
+            <code style={{
+              fontFamily: "monospace", fontSize: 12,
+              color: "rgba(255,255,255,.6)", wordBreak: "break-all",
+            }}>
+              {SAI_CONTRACT}
+            </code>
+          </div>
+          <button
+            onClick={copyCA}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              background: cacopied ? "rgba(74,222,128,.1)" : "rgba(255,255,255,.06)",
+              border: `1px solid ${cacopied ? "rgba(74,222,128,.3)" : "rgba(255,255,255,.12)"}`,
+              borderRadius: 8, padding: "9px 16px", cursor: "pointer",
+              fontFamily: "'Orbitron',monospace", fontSize: 10, fontWeight: 700,
+              color: cacopied ? "#4ade80" : "rgba(255,255,255,.5)",
+              transition: "all .2s", flexShrink: 0,
+            }}
+          >
+            {cacopied ? <Check size={13} /> : <Copy size={13} />}
+            {cacopied ? "Copied!" : "Copy CA"}
+          </button>
         </div>
       </div>
     </main>

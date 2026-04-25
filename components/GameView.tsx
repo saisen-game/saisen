@@ -3,7 +3,7 @@
 import {
   useState, useEffect, useRef, useCallback,
 } from "react";
-import { useAccount } from "wagmi";
+import { useWallet } from "@solana/wallet-adapter-react";
 import {
   generateBotTimeline, getBotScoreAt,
   type Difficulty, DIFFICULTY_LABELS,
@@ -14,7 +14,7 @@ import { applyElo, DEFAULT_ELO }  from "@/lib/elo";
 import ResultScreen               from "./ResultScreen";
 import FarcasterProfile           from "./FarcasterProfile";
 import WalletButton               from "./WalletButton";
-import { LogoMark }               from "./icons";
+import { LogoMark, ToriiIcon }    from "./icons";
 import type { FarcasterUser }     from "@/lib/farcaster";
 import { Zap, ArrowLeft }         from "lucide-react";
 
@@ -31,16 +31,16 @@ interface Target { id:string; x:number; y:number; sz:number; c:string; }
 interface Burst  { id:string; x:number; y:number; c:string; }
 interface Popup  { id:string; x:number; y:number; txt:string; }
 
-// ─── Local ELO storage (Farcaster users without wallet) ──────
-function getLocalElo(fid: number) {
-  try { return parseInt(localStorage.getItem(`saisen:elo:${fid}`) ?? String(DEFAULT_ELO)); }
+// ─── Local rating storage ─────────────────────────────────────
+function getLocalElo(key: string) {
+  try { return parseInt(localStorage.getItem(`saisen:elo:${key}`) ?? String(DEFAULT_ELO)); }
   catch { return DEFAULT_ELO; }
 }
-function setLocalElo(fid: number, elo: number) {
-  try { localStorage.setItem(`saisen:elo:${fid}`, String(elo)); } catch {}
+function setLocalElo(key: string, elo: number) {
+  try { localStorage.setItem(`saisen:elo:${key}`, String(elo)); } catch {}
 }
 
-// ─── Persist result to off-chain API ─────────────────────────
+// ─── Auto-submit score to leaderboard API ────────────────────
 async function persistResult(
   fid:      number | null,
   username: string | null,
@@ -51,7 +51,7 @@ async function persistResult(
   elo:      number,
 ) {
   try {
-    await fetch("/api/leaderboard", {
+    await fetch("/api/score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fid, username, pfpUrl, address, win, score, elo }),
@@ -65,8 +65,23 @@ interface Props {
   onBack: () => void;
 }
 
+// ─── Mini SAISEN logo for target balls ───────────────────────
+function BallLogo({ size }: { size: number }) {
+  const s = Math.max(10, Math.round(size * 0.55));
+  return (
+    <svg width={s} height={Math.round(s * 0.9)} viewBox="0 0 40 36" fill="none"
+      style={{ pointerEvents: "none", opacity: .75 }}>
+      <path d="M1 12.5Q20 3.5 39 12.5L37.5 16Q20 7 2.5 16Z" fill="rgba(255,255,255,.9)" />
+      <rect x="5"    y="15.5" width="30"  height="2.8"  rx="1.4"  fill="rgba(255,255,255,.7)" />
+      <rect x="11.2" y="15"   width="3.2" height="17"   rx="1.6"  fill="rgba(255,255,255,.8)" />
+      <rect x="25.6" y="15"   width="3.2" height="17"   rx="1.6"  fill="rgba(255,255,255,.8)" />
+    </svg>
+  );
+}
+
 export default function GameView({ fcUser, onBack }: Props) {
-  const { address } = useAccount();
+  const { publicKey } = useWallet();
+  const address = publicKey?.toBase58() ?? null;
 
   const [phase,      setPhase]    = useState<Phase>("lobby");
   const [difficulty, setDiff]     = useState<Difficulty>("medium");
@@ -84,7 +99,8 @@ export default function GameView({ fcUser, onBack }: Props) {
     matchDuration: number; validation: ReturnType<typeof validateMatch>;
   } | null>(null);
 
-  const eloRef = useRef(fcUser ? getLocalElo(fcUser.fid) : DEFAULT_ELO);
+  const identityKey = fcUser ? `fid:${fcUser.fid}` : address ?? "guest";
+  const eloRef = useRef(getLocalElo(identityKey));
 
   const r = useRef({
     ps:          0,
@@ -124,13 +140,14 @@ export default function GameView({ fcUser, onBack }: Props) {
     const eloChange  = newElo - eloRef.current;
     eloRef.current   = newElo;
 
-    if (fcUser) setLocalElo(fcUser.fid, newElo);
+    setLocalElo(identityKey, newElo);
 
+    // Auto-submit score
     await persistResult(
       fcUser?.fid     ?? null,
       fcUser?.username ?? null,
       fcUser?.pfpUrl  ?? null,
-      address         ?? null,
+      address,
       win,
       r.current.ps,
       newElo,
@@ -138,7 +155,7 @@ export default function GameView({ fcUser, onBack }: Props) {
 
     setResult({ win, eloChange, newElo, playerScore: r.current.ps, botScore: botFinal, matchDuration, validation });
     setPhase("result");
-  }, [fcUser, address]);
+  }, [fcUser, address, identityKey]);
 
   const startGame = useCallback(() => {
     cleanup();
@@ -464,10 +481,11 @@ export default function GameView({ fcUser, onBack }: Props) {
                     border: `2px solid ${t.c}dd`,
                     cursor: "crosshair", padding: 0, outline: "none",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: t.sz * .36, color: "rgba(255,255,255,.5)",
-                    fontFamily: "monospace", fontWeight: 700, zIndex: 2,
+                    zIndex: 2,
                   }}
-                >×</button>
+                >
+                  <BallLogo size={t.sz} />
+                </button>
               ))}
 
               {/* Burst effects */}

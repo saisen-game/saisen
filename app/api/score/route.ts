@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kv }                        from "@vercel/kv";
 
-export interface LBEntry {
+const LB_KEY  = "saisen:lb:v1";
+const MAX_CAP = 500;
+const MAX_SCORE = 55;
+const MAX_RATING = 5000;
+
+interface LBEntry {
   id:        string;
   display:   string;
   pfpUrl?:   string;
@@ -15,18 +20,15 @@ export interface LBEntry {
   updatedAt: number;
 }
 
-interface PostBody {
+interface ScoreBody {
+  address?:  string;
   fid?:      number;
   username?: string;
   pfpUrl?:   string;
-  address?:  string;
   win:       boolean;
   score:     number;
   elo:       number;
 }
-
-const LB_KEY  = "saisen:lb:v1";
-const MAX_CAP = 500;
 
 let _mem: LBEntry[] = [];
 
@@ -40,9 +42,7 @@ async function getAll(): Promise<LBEntry[]> {
 }
 
 async function saveAll(data: LBEntry[]): Promise<void> {
-  const payload = data
-    .sort((a, b) => b.elo - a.elo)
-    .slice(0, MAX_CAP);
+  const payload = data.sort((a, b) => b.elo - a.elo).slice(0, MAX_CAP);
   try {
     await kv.set(LB_KEY, JSON.stringify(payload));
   } catch {
@@ -50,35 +50,26 @@ async function saveAll(data: LBEntry[]): Promise<void> {
   }
 }
 
-export async function GET() {
-  const entries = await getAll();
-  return NextResponse.json({
-    entries:   entries.sort((a, b) => b.elo - a.elo),
-    count:     entries.length,
-    updatedAt: Date.now(),
-  });
-}
-
 export async function POST(req: NextRequest) {
-  let body: PostBody;
+  let body: ScoreBody;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (typeof body.win   !== "boolean") return NextResponse.json({ error: "Missing win"    }, { status: 400 });
-  if (typeof body.score !== "number")  return NextResponse.json({ error: "Missing score"  }, { status: 400 });
-  if (typeof body.elo   !== "number")  return NextResponse.json({ error: "Missing elo"    }, { status: 400 });
-  if (body.score > 55)                 return NextResponse.json({ error: "Score too high" }, { status: 400 });
-  if (body.elo   > 5000)               return NextResponse.json({ error: "Rating too high" }, { status: 400 });
+  if (typeof body.win   !== "boolean") return NextResponse.json({ error: "Missing win"   }, { status: 400 });
+  if (typeof body.score !== "number")  return NextResponse.json({ error: "Missing score" }, { status: 400 });
+  if (typeof body.elo   !== "number")  return NextResponse.json({ error: "Missing elo"   }, { status: 400 });
+  if (body.score > MAX_SCORE)          return NextResponse.json({ error: "Score too high" }, { status: 400 });
+  if (body.elo   > MAX_RATING)         return NextResponse.json({ error: "Rating too high" }, { status: 400 });
 
   const id = body.fid
     ? String(body.fid)
     : body.address?.toLowerCase();
 
   if (!id) {
-    return NextResponse.json({ error: "No identity (fid or address required)" }, { status: 400 });
+    return NextResponse.json({ error: "Identity required (fid or address)" }, { status: 400 });
   }
 
   const entries = await getAll();
@@ -89,7 +80,7 @@ export async function POST(req: NextRequest) {
     entries[idx] = {
       ...prev,
       display:   body.username ? `@${body.username}` : prev.display,
-      pfpUrl:    body.pfpUrl   ?? prev.pfpUrl,
+      pfpUrl:    body.pfpUrl ?? prev.pfpUrl,
       elo:       body.elo,
       wins:      prev.wins   + (body.win ? 1 : 0),
       losses:    prev.losses + (body.win ? 0 : 1),
