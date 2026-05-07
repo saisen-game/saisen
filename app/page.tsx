@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Zap, Trophy, Bot, ShoppingBag, Copy, Check } from "lucide-react";
 import { initFarcaster, type FarcasterUser } from "@/lib/farcaster";
 import GameView          from "@/components/GameView";
@@ -22,11 +23,15 @@ export default function Home() {
   const [cacopied, setCaCopied] = useState(false);
 
   useEffect(() => {
-    initFarcaster().then((ctx) => {
-      setFcUser(ctx.user);
-      setInFC(ctx.isInFarcaster);
-      setHydrated(true);
-    });
+    const timeout = setTimeout(() => setHydrated(true), 5000);
+    initFarcaster()
+      .then((ctx) => {
+        setFcUser(ctx.user);
+        setInFC(ctx.isInFarcaster);
+        setHydrated(true);
+      })
+      .catch(() => setHydrated(true))
+      .finally(() => clearTimeout(timeout));
   }, []);
 
   const copyCA = async () => {
@@ -100,6 +105,14 @@ export default function Home() {
         <LogoMark size={32} />
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {fcUser && <FarcasterProfile user={fcUser} compact />}
+          <Link href="/agent" style={{
+            background: "rgba(6,182,212,.1)", border: "1px solid rgba(6,182,212,.3)",
+            color: "#22d3ee", borderRadius: 8, padding: "8px 16px",
+            fontSize: 12, fontFamily: "'Orbitron', monospace", fontWeight: 700,
+            letterSpacing: ".08em", textDecoration: "none", transition: "all .2s",
+          }}>
+            ⚡ Agent
+          </Link>
           <WalletButton />
         </div>
       </nav>

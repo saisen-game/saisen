@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./providers";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://saisen.vercel.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.saisen.fun";
 
 export const metadata: Metadata = {
   title:       "SAISEN — Compete. Perform. Dominate.",
@@ -45,7 +46,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <ErrorBoundary>
+          <Providers>{children}</Providers>
+        </ErrorBoundary>
       </body>
     </html>
   );
