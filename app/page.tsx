@@ -181,7 +181,7 @@ export default function Home() {
           maxWidth: 440, margin: "0 auto 36px", fontWeight: 500,
         }}>
           Skill-based 1v1 reaction duels. Your $SAI rating lives on-chain.
-          Powered by Solana.
+          Powered by Base.
         </p>
 
         {/* CTAs */}
@@ -303,7 +303,7 @@ export default function Home() {
               fontFamily: "'Orbitron',monospace", fontSize: 9,
               color: "#9f5fff", letterSpacing: ".2em", marginBottom: 5,
             }}>
-              $SAI TOKEN CONTRACT (SOLANA)
+              $SAI TOKEN CONTRACT (BASE)
             </div>
             <code style={{
               fontFamily: "monospace", fontSize: 12,

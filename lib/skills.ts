@@ -1,4 +1,4 @@
-export const SAI_CONTRACT = "GWXCNDwhKy7g2TDbp8Vb64Dgs8LKrabT1N6RCRN7brrr";
+export const SAI_CONTRACT = "0x2b286ce09d09e77c5aaeb05cb73a6d7c6066cba3";
 export const SAI_HOLDER_THRESHOLD = 10_000_000; // 10M $SAI
 
 export interface SkillPrice {
